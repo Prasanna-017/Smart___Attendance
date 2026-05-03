@@ -1,8 +1,6 @@
-import smtplib
 import os
 import logging
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -11,13 +9,11 @@ def send_absence_emails(students: list, date: str, custom_message: str = "") -> 
     failure_count = 0
     errors = []
 
-    smtp_user = os.getenv("BREVO_SMTP_USER")
-    smtp_pass = os.getenv("BREVO_SMTP_PASSWORD")
-    smtp_from = os.getenv("BREVO_SMTP_FROM")
+    api_key = os.getenv("BREVO_API_KEY")
+    smtp_from = os.getenv("BREVO_SMTP_FROM", "prasannaanna9@gmail.com")
 
     for student in students:
         try:
-            # Handle both dict and Pydantic model objects
             if hasattr(student, '__dict__'):
                 to_email = getattr(student, 'email', None) or getattr(student, 'parent_email', None)
                 student_name = getattr(student, 'name', None) or getattr(student, 'student_name', None)
@@ -30,28 +26,35 @@ def send_absence_emails(students: list, date: str, custom_message: str = "") -> 
                 failure_count += 1
                 continue
 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"Absence Alert - {student_name}"
-            msg["From"] = smtp_from
-            msg["To"] = to_email
+            response = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "sender": {"name": "Smart Attendance", "email": smtp_from},
+                    "to": [{"email": to_email}],
+                    "subject": f"Absence Alert - {student_name}",
+                    "htmlContent": f"""
+                        <h2>Absence Notification</h2>
+                        <p>Dear Parent/Guardian,</p>
+                        <p><strong>{student_name}</strong> was marked
+                        <strong>absent</strong> on {date}.</p>
+                        {f'<p>{custom_message}</p>' if custom_message else ''}
+                        <p>Smart Attendance System</p>
+                    """
+                }
+            )
 
-            html = f"""
-                <h2>Absence Notification</h2>
-                <p>Dear Parent/Guardian,</p>
-                <p><strong>{student_name}</strong> was marked
-                <strong>absent</strong> on {date}.</p>
-                {f'<p>{custom_message}</p>' if custom_message else ''}
-                <p>Smart Attendance System</p>
-            """
-            msg.attach(MIMEText(html, "html"))
-
-            with smtplib.SMTP("smtp-relay.brevo.com", 587) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_from, to_email, msg.as_string())
-
-            logger.info(f"Email sent to {to_email}")
-            success_count += 1
+            if response.status_code == 201:
+                logger.info(f"Email sent to {to_email}")
+                success_count += 1
+            else:
+                error_msg = response.json()
+                logger.error(f"Brevo API error: {error_msg}")
+                errors.append(str(error_msg))
+                failure_count += 1
 
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
