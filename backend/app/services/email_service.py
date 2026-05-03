@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 
-def send_absence_email(to_email: str, student_name: str, date: str) -> bool:
+def send_absence_emails(to_email: str, student_name: str, date: str) -> bool:
     """Send absence notification email using Resend API."""
     try:
         resend.Emails.send({
