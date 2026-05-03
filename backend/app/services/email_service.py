@@ -17,8 +17,13 @@ def send_absence_emails(students: list, date: str, custom_message: str = "") -> 
 
     for student in students:
         try:
-            to_email = student.get("email") or student.get("parent_email")
-            student_name = student.get("name") or student.get("student_name")
+            # Handle both dict and Pydantic model objects
+            if hasattr(student, '__dict__'):
+                to_email = getattr(student, 'email', None) or getattr(student, 'parent_email', None)
+                student_name = getattr(student, 'name', None) or getattr(student, 'student_name', None)
+            else:
+                to_email = student.get("email") or student.get("parent_email")
+                student_name = student.get("name") or student.get("student_name")
 
             if not to_email:
                 errors.append(f"No email for {student_name}")
